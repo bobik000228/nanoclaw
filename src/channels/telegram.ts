@@ -4,6 +4,7 @@ import { Api, Bot } from 'grammy';
 import { ASSISTANT_NAME, TRIGGER_PATTERN } from '../config.js';
 import { readEnvFile } from '../env.js';
 import { logger } from '../logger.js';
+import { transcribeAudio } from '../transcription.js';
 import { registerChannel, ChannelOpts } from './registry.js';
 import {
   Channel,
@@ -195,7 +196,27 @@ export class TelegramChannel implements Channel {
 
     this.bot.on('message:photo', (ctx) => storeNonText(ctx, '[Photo]'));
     this.bot.on('message:video', (ctx) => storeNonText(ctx, '[Video]'));
-    this.bot.on('message:voice', (ctx) => storeNonText(ctx, '[Voice message]'));
+    this.bot.on('message:voice', async (ctx) => {
+      const chatJid = `tg:${ctx.chat.id}`;
+      const group = this.opts.registeredGroups()[chatJid];
+      if (!group) return;
+
+      try {
+        const file = await ctx.getFile();
+        const url = `https://api.telegram.org/file/bot${this.botToken}/${file.file_path}`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`Download failed: ${res.status}`);
+        const buffer = Buffer.from(await res.arrayBuffer());
+        const transcript = await transcribeAudio(buffer, 'voice.ogg');
+        const content = transcript
+          ? `[Voice: ${transcript}]`
+          : '[Voice message - transcription unavailable]';
+        storeNonText(ctx, content);
+      } catch (err) {
+        logger.error({ err }, 'Failed to process voice message');
+        storeNonText(ctx, '[Voice message - transcription failed]');
+      }
+    });
     this.bot.on('message:audio', (ctx) => storeNonText(ctx, '[Audio]'));
     this.bot.on('message:document', (ctx) => {
       const name = ctx.message.document?.file_name || 'file';
@@ -272,6 +293,26 @@ export class TelegramChannel implements Channel {
       this.bot.stop();
       this.bot = null;
       logger.info('Telegram bot stopped');
+    }
+  }
+
+  async sendPhoto(jid: string, photoData: string, photoExt: string, caption?: string): Promise<void> {
+    if (!this.bot) {
+      logger.warn('Telegram bot not initialized');
+      return;
+    }
+    try {
+      const numericId = jid.replace(/^tg:/, '');
+      const { InputFile } = await import('grammy');
+      const buffer = Buffer.from(photoData, 'base64');
+      await this.bot.api.sendPhoto(
+        numericId,
+        new InputFile(buffer, `photo.${photoExt}`),
+        caption ? { caption } : {},
+      );
+      logger.info({ jid }, 'Telegram photo sent');
+    } catch (err) {
+      logger.error({ jid, err }, 'Failed to send Telegram photo');
     }
   }
 

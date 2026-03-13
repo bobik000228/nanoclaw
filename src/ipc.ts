@@ -12,6 +12,7 @@ import { RegisteredGroup } from './types.js';
 
 export interface IpcDeps {
   sendMessage: (jid: string, text: string) => Promise<void>;
+  sendPhoto?: (jid: string, photoData: string, photoExt: string, caption?: string) => Promise<void>;
   registeredGroups: () => Record<string, RegisteredGroup>;
   registerGroup: (jid: string, group: RegisteredGroup) => void;
   syncGroups: (force: boolean) => Promise<void>;
@@ -73,6 +74,20 @@ export function startIpcWatcher(deps: IpcDeps): void {
             const filePath = path.join(messagesDir, file);
             try {
               const data = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+              if (data.type === 'send_photo' && data.chatJid && data.photoData) {
+                const targetGroup = registeredGroups[data.chatJid];
+                if (
+                  isMain ||
+                  (targetGroup && targetGroup.folder === sourceGroup)
+                ) {
+                  if (deps.sendPhoto) {
+                    await deps.sendPhoto(data.chatJid, data.photoData, data.photoExt || 'png', data.caption);
+                    logger.info({ chatJid: data.chatJid, sourceGroup }, 'IPC photo sent');
+                  }
+                } else {
+                  logger.warn({ chatJid: data.chatJid, sourceGroup }, 'Unauthorized IPC send_photo blocked');
+                }
+              }
               if (data.type === 'message' && data.chatJid && data.text) {
                 // Authorization: verify this group can send to this chatJid
                 const targetGroup = registeredGroups[data.chatJid];
