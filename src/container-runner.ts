@@ -27,6 +27,7 @@ import {
   stopContainer,
 } from './container-runtime.js';
 import { detectAuthMode } from './credential-proxy.js';
+import { readEnvFile } from './env.js';
 import { validateAdditionalMounts } from './mount-security.js';
 import { RegisteredGroup } from './types.js';
 
@@ -248,6 +249,16 @@ function buildContainerArgs(
     args.push('-e', 'ANTHROPIC_API_KEY=placeholder');
   } else {
     args.push('-e', 'CLAUDE_CODE_OAUTH_TOKEN=placeholder');
+  }
+
+  // Forward non-secret env vars that agents need for git operations, transcription, etc.
+  // These are read from .env (not process.env) so they stay out of the host process env.
+  const envPassthrough = readEnvFile([
+    'GITHUB_TOKEN',
+    'OPENAI_API_KEY',
+  ]);
+  for (const [key, value] of Object.entries(envPassthrough)) {
+    args.push('-e', `${key}=${value}`);
   }
 
   // Runtime-specific args for host gateway resolution
