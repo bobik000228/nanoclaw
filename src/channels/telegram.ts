@@ -3,7 +3,7 @@ import https from 'https';
 import path from 'path';
 import { Api, Bot } from 'grammy';
 
-import { ASSISTANT_NAME, TRIGGER_PATTERN } from '../config.js';
+import { ASSISTANT_NAME, DATA_DIR, TRIGGER_PATTERN } from '../config.js';
 import { readEnvFile } from '../env.js';
 import { logger } from '../logger.js';
 import { transcribeAudio } from '../transcription.js';
@@ -210,8 +210,8 @@ export class TelegramChannel implements Channel {
         if (!res.ok) throw new Error(`HTTP ${res.status} downloading photo`);
         const buffer = Buffer.from(await res.arrayBuffer());
 
-        // Save to shared directory so the agent can read it directly
-        const incomingDir = '/workspace/extra/bob/incoming';
+        // Save to IPC dir — host path nanoclaw can write, container sees as /workspace/ipc/incoming/
+        const incomingDir = path.join(DATA_DIR, 'ipc', 'incoming');
         fs.mkdirSync(incomingDir, { recursive: true });
         const ext = path.extname(file.file_path) || '.jpg';
         const filename = `photo_${Date.now()}${ext}`;
