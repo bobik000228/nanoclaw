@@ -202,28 +202,28 @@ export class TelegramChannel implements Channel {
       if (!group) return;
 
       try {
-        // Pick the largest available photo size
-        const photos = ctx.message.photo;
-        const largest = photos[photos.length - 1];
-        const file = await ctx.api.getFile(largest.file_id);
+        // ctx.getFile() picks the largest available photo size automatically
+        const file = await ctx.getFile();
+        if (!file.file_path) throw new Error('file_path missing from getFile response');
         const url = `https://api.telegram.org/file/bot${this.botToken}/${file.file_path}`;
         const res = await fetch(url);
-        if (!res.ok) throw new Error(`Download failed: ${res.status}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status} downloading photo`);
         const buffer = Buffer.from(await res.arrayBuffer());
 
-        // Save to shared directory so the agent can read it
+        // Save to shared directory so the agent can read it directly
         const incomingDir = '/workspace/extra/bob/incoming';
         fs.mkdirSync(incomingDir, { recursive: true });
-        const ext = path.extname(file.file_path || 'photo.jpg') || '.jpg';
+        const ext = path.extname(file.file_path) || '.jpg';
         const filename = `photo_${Date.now()}${ext}`;
         const filepath = path.join(incomingDir, filename);
         fs.writeFileSync(filepath, buffer);
 
-        logger.info({ chatJid, filepath }, 'Incoming Telegram photo saved');
+        logger.info({ chatJid, filepath, bytes: buffer.length }, 'Incoming Telegram photo saved');
         storeNonText(ctx, `[Photo: ${filepath}]`);
       } catch (err) {
-        logger.error({ err }, 'Failed to download incoming photo');
-        storeNonText(ctx, '[Photo - download failed]');
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.error({ err, chatJid }, 'Failed to download incoming photo');
+        storeNonText(ctx, `[Photo - download failed: ${msg}]`);
       }
     });
     this.bot.on('message:video', (ctx) => storeNonText(ctx, '[Video]'));
