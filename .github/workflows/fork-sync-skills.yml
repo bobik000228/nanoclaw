@@ -152,6 +152,7 @@ jobs:
           echo "succeeded=$SUCCEEDED" >> "$GITHUB_OUTPUT"
 
       - name: Open issue for upstream sync failure
+        continue-on-error: true
         if: steps.sync.outputs.sync_failed == 'true'
         uses: actions/github-script@v7
         with:
@@ -178,6 +179,7 @@ jobs:
             });
 
       - name: Open issue for failed skill merges
+        continue-on-error: true
         if: steps.merge.outputs.failed != ''
         uses: actions/github-script@v7
         with:
